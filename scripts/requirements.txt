@@ -1,0 +1,4 @@
+# Scripts dependencies
+openai>=1.0.0
+chromadb>=0.4.22
+python-dotenv>=1.0.0
