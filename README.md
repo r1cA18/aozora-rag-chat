@@ -28,7 +28,7 @@
 | **Backend** | **FastAPI** (Python) | 検索ロジックのオーケストレーション |
 | **Vector DB** | **ChromaDB** | ローカルでの高速なベクトル検索 |
 | **Search** | **Exa API** | LLM向けの高精度Web検索 |
-| **LLM** | **Gemini 2.0 Flash** | 高速かつロングコンテキスト対応 |
+| **LLM** | **Gemini 3.0 Flash** | 高速かつロングコンテキスト対応 |
 | **Embedding** | **OpenAI text-embedding-3** | 日本語に強い埋め込みモデル |
 
 ---
