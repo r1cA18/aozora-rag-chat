@@ -1,12 +1,13 @@
 "use client";
 
 import { useChat } from "ai/react";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { AppLayout } from "@/components/layout/app-layout";
 import { Sidebar } from "@/components/sidebar/sidebar";
 import { TextViewer } from "@/components/viewer/text-viewer";
 import { ChatPanel } from "@/components/chat/chat-panel";
 import { useViewer } from "@/hooks/use-viewer";
+import { searchWorks, type SearchResultItem } from "@/lib/api";
 
 interface Work {
   id: string;
@@ -23,52 +24,109 @@ interface Citation {
   url?: string;
 }
 
-// Demo content
-const DEMO_CONTENT = `これはデモ用のテキストです。
-
-実際のアプリケーションでは、青空文庫のAPIやChromaDBから取得したテキストがここに表示されます。
-
-チャットで質問すると、関連する箇所がハイライトされて表示されます。`;
-
 export default function Home() {
   const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat();
   const { tabs, activeTabId, setActiveTabId, openTab, closeTab } = useViewer();
   const [recentWorks, setRecentWorks] = useState<Work[]>([]);
   const [selectedWorkId, setSelectedWorkId] = useState<string>();
-  const [citations] = useState<Map<string, Citation>>(new Map());
+  const [citations, setCitations] = useState<Map<string, Citation>>(new Map());
+  const [lastSearchResults, setLastSearchResults] = useState<SearchResultItem[]>([]);
 
-  const handleWorkSelect = useCallback((work: Work) => {
-    setSelectedWorkId(work.id);
-
-    // Add to recent
-    setRecentWorks(prev => {
-      const filtered = prev.filter(w => w.id !== work.id);
-      return [work, ...filtered].slice(0, 5);
-    });
-
-    // Open in viewer
-    openTab({
-      workId: work.id,
-      title: work.title,
-      author: work.author,
-      content: DEMO_CONTENT,
-    });
-  }, [openTab]);
-
-  const handleCitationClick = useCallback((citation: Citation) => {
-    if (citation.type === "aozora" && citation.workId) {
-      openTab({
-        workId: citation.workId,
-        title: citation.title,
-        author: citation.author || "",
-        content: citation.text,
-      });
+  // Update citations when we get search results
+  useEffect(() => {
+    if (lastSearchResults.length > 0) {
+      const newCitations = new Map<string, Citation>();
+      for (const result of lastSearchResults) {
+        if (result.source === "aozora" && result.work_id) {
+          const key = `aozora://${result.work_id}`;
+          newCitations.set(key, {
+            type: "aozora",
+            title: result.title || "不明",
+            author: result.author,
+            text: result.context_text || result.text,
+            workId: result.work_id,
+          });
+        }
+      }
+      setCitations(newCitations);
     }
-  }, [openTab]);
+  }, [lastSearchResults]);
+
+  const handleWorkSelect = useCallback(
+    (work: Work) => {
+      setSelectedWorkId(work.id);
+
+      // Add to recent
+      setRecentWorks((prev) => {
+        const filtered = prev.filter((w) => w.id !== work.id);
+        return [work, ...filtered].slice(0, 5);
+      });
+
+      // Find corresponding search result for content
+      const searchResult = lastSearchResults.find((r) => r.work_id === work.id);
+      const content = searchResult?.context_text || searchResult?.text || "本文を読み込み中...";
+
+      openTab({
+        workId: work.id,
+        title: work.title,
+        author: work.author,
+        content,
+      });
+    },
+    [openTab, lastSearchResults]
+  );
+
+  const handleCitationClick = useCallback(
+    (citation: Citation) => {
+      if (citation.type === "aozora" && citation.workId) {
+        // Add to recent
+        const work = {
+          id: citation.workId,
+          title: citation.title,
+          author: citation.author || "",
+        };
+        setRecentWorks((prev) => {
+          const filtered = prev.filter((w) => w.id !== work.id);
+          return [work, ...filtered].slice(0, 5);
+        });
+
+        openTab({
+          workId: citation.workId,
+          title: citation.title,
+          author: citation.author || "",
+          content: citation.text,
+        });
+      }
+    },
+    [openTab]
+  );
 
   const handleOpenAozora = useCallback((workId: string) => {
-    window.open(`https://www.aozora.gr.jp/cards/${workId}/`, "_blank");
+    // Open Aozora Bunko page
+    window.open(`https://www.aozora.gr.jp/`, "_blank");
   }, []);
+
+  // Custom submit handler to capture search results
+  const handleChatSubmit = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!input.trim()) return;
+
+      // Run search in parallel with chat
+      const query = input.trim();
+      searchWorks(query)
+        .then((results) => {
+          setLastSearchResults([...results.aozora_results, ...results.web_results]);
+        })
+        .catch((err) => {
+          console.error("Search error:", err);
+        });
+
+      // Submit to chat
+      handleSubmit(e);
+    },
+    [input, handleSubmit]
+  );
 
   return (
     <AppLayout
@@ -95,7 +153,7 @@ export default function Home() {
           isLoading={isLoading}
           citations={citations}
           onInputChange={handleInputChange}
-          onSubmit={handleSubmit}
+          onSubmit={handleChatSubmit}
           onCitationClick={handleCitationClick}
         />
       }

@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
-import { BookOpen, Search, Clock, Library, ChevronRight } from "lucide-react";
+import { useState, useEffect } from "react";
+import { BookOpen, Search, Clock, Library, ChevronRight, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { fetchWorks, type WorkItem } from "@/lib/api";
 
 interface Work {
   id: string;
@@ -22,22 +23,49 @@ interface SidebarProps {
 
 export function Sidebar({ recentWorks = [], onWorkSelect, selectedWorkId }: SidebarProps) {
   const [searchQuery, setSearchQuery] = useState("");
+  const [works, setWorks] = useState<Work[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Demo data - 実際はAPIから取得
-  const demoWorks: Work[] = [
-    { id: "1", title: "吾輩は猫である", author: "夏目漱石" },
-    { id: "2", title: "羅生門", author: "芥川龍之介" },
-    { id: "3", title: "走れメロス", author: "太宰治" },
-    { id: "4", title: "銀河鉄道の夜", author: "宮沢賢治" },
-    { id: "5", title: "檸檬", author: "梶井基次郎" },
-  ];
+  // Fetch works from backend
+  useEffect(() => {
+    async function loadWorks() {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const response = await fetchWorks(200);
+        setWorks(
+          response.works.map((w: WorkItem) => ({
+            id: w.work_id,
+            title: w.title,
+            author: w.author,
+          }))
+        );
+      } catch (err) {
+        console.error("Failed to load works:", err);
+        setError("作品の読み込みに失敗しました");
+        // Fallback to demo data
+        setWorks([
+          { id: "1", title: "吾輩は猫である", author: "夏目漱石" },
+          { id: "2", title: "羅生門", author: "芥川龍之介" },
+          { id: "3", title: "走れメロス", author: "太宰治" },
+          { id: "4", title: "銀河鉄道の夜", author: "宮沢賢治" },
+          { id: "5", title: "檸檬", author: "梶井基次郎" },
+        ]);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    loadWorks();
+  }, []);
 
   const filteredWorks = searchQuery
-    ? demoWorks.filter(
+    ? works.filter(
         (w) =>
-          w.title.includes(searchQuery) || w.author.includes(searchQuery)
+          w.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          w.author.toLowerCase().includes(searchQuery.toLowerCase())
       )
-    : demoWorks;
+    : works;
 
   return (
     <div className="flex h-full flex-col">
@@ -74,7 +102,7 @@ export function Sidebar({ recentWorks = [], onWorkSelect, selectedWorkId }: Side
           <ScrollArea className="flex-none max-h-32">
             <div className="px-2 space-y-0.5">
               {recentWorks.slice(0, 3).map((work) => (
-                <WorkItem
+                <WorkItemButton
                   key={work.id}
                   work={work}
                   isSelected={work.id === selectedWorkId}
@@ -94,25 +122,32 @@ export function Sidebar({ recentWorks = [], onWorkSelect, selectedWorkId }: Side
           <BookOpen className="h-3 w-3" />
           <span>作品一覧</span>
           <Badge variant="secondary" className="ml-auto text-[10px] px-1.5 py-0">
-            {filteredWorks.length}
+            {isLoading ? "..." : filteredWorks.length}
           </Badge>
         </div>
       </div>
 
       <ScrollArea className="flex-1">
         <div className="px-2 pb-4 space-y-0.5">
-          {filteredWorks.map((work) => (
-            <WorkItem
-              key={work.id}
-              work={work}
-              isSelected={work.id === selectedWorkId}
-              onClick={() => onWorkSelect?.(work)}
-            />
-          ))}
-          {filteredWorks.length === 0 && (
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : error ? (
+            <div className="px-2 py-4 text-center text-sm text-destructive">{error}</div>
+          ) : filteredWorks.length === 0 ? (
             <div className="px-2 py-8 text-center text-sm text-muted-foreground">
               作品が見つかりません
             </div>
+          ) : (
+            filteredWorks.map((work) => (
+              <WorkItemButton
+                key={work.id}
+                work={work}
+                isSelected={work.id === selectedWorkId}
+                onClick={() => onWorkSelect?.(work)}
+              />
+            ))
           )}
         </div>
       </ScrollArea>
@@ -120,14 +155,14 @@ export function Sidebar({ recentWorks = [], onWorkSelect, selectedWorkId }: Side
   );
 }
 
-interface WorkItemProps {
+interface WorkItemButtonProps {
   work: Work;
   isSelected?: boolean;
   onClick?: () => void;
   compact?: boolean;
 }
 
-function WorkItem({ work, isSelected, onClick, compact }: WorkItemProps) {
+function WorkItemButton({ work, isSelected, onClick, compact }: WorkItemButtonProps) {
   return (
     <button
       onClick={onClick}
@@ -149,9 +184,7 @@ function WorkItem({ work, isSelected, onClick, compact }: WorkItemProps) {
           {work.title}
         </div>
         {!compact && (
-          <div className="text-xs text-muted-foreground truncate">
-            {work.author}
-          </div>
+          <div className="text-xs text-muted-foreground truncate">{work.author}</div>
         )}
       </div>
       <ChevronRight
