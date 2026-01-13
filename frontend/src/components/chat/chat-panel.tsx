@@ -129,6 +129,58 @@ interface MessageBubbleProps {
 function MessageBubble({ message, citations, onCitationClick }: MessageBubbleProps) {
   const isUser = message.role === "user";
 
+  // Parse citation references like [出典: title - author] or [Web参考: title]
+  const parseCitations = (content: string) => {
+    const citationPattern = /\[(?:出典|Web参考):\s*([^\]]+)\]/g;
+    const parts: (string | { type: "citation"; title: string; author?: string; isWeb: boolean })[] = [];
+    let lastIndex = 0;
+    let match;
+
+    while ((match = citationPattern.exec(content)) !== null) {
+      // Add text before the citation
+      if (match.index > lastIndex) {
+        parts.push(content.slice(lastIndex, match.index));
+      }
+
+      const fullMatch = match[0];
+      const citationText = match[1];
+      const isWeb = fullMatch.startsWith("[Web参考");
+
+      // Parse "title - author" format
+      const dashIndex = citationText.lastIndexOf(" - ");
+      let title: string;
+      let author: string | undefined;
+
+      if (dashIndex > 0 && !isWeb) {
+        title = citationText.slice(0, dashIndex).trim();
+        author = citationText.slice(dashIndex + 3).trim();
+      } else {
+        title = citationText.trim();
+      }
+
+      parts.push({ type: "citation", title, author, isWeb });
+      lastIndex = match.index + fullMatch.length;
+    }
+
+    // Add remaining text
+    if (lastIndex < content.length) {
+      parts.push(content.slice(lastIndex));
+    }
+
+    return parts;
+  };
+
+  // Find matching citation from citations map
+  const findCitation = (title: string, author?: string): Citation | undefined => {
+    for (const [, citation] of citations) {
+      if (citation.title === title ||
+          (author && citation.title === title && citation.author === author)) {
+        return citation;
+      }
+    }
+    return undefined;
+  };
+
   return (
     <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
       <div
@@ -154,6 +206,36 @@ function MessageBubble({ message, citations, onCitationClick }: MessageBubblePro
                     {children}
                   </CitationLink>
                 ),
+                p: ({ children }) => {
+                  // Process paragraph content to detect citations
+                  const textContent = typeof children === "string" ? children :
+                    Array.isArray(children) ? children.map(c => typeof c === "string" ? c : "").join("") : "";
+
+                  if (textContent.includes("[出典:") || textContent.includes("[Web参考:")) {
+                    const parts = parseCitations(textContent);
+                    return (
+                      <p>
+                        {parts.map((part, i) => {
+                          if (typeof part === "string") {
+                            return <span key={i}>{part}</span>;
+                          }
+                          const citation = findCitation(part.title, part.author);
+                          return (
+                            <InlineCitationBadge
+                              key={i}
+                              title={part.title}
+                              author={part.author}
+                              isWeb={part.isWeb}
+                              citation={citation}
+                              onCitationClick={onCitationClick}
+                            />
+                          );
+                        })}
+                      </p>
+                    );
+                  }
+                  return <p>{children}</p>;
+                },
               }}
             >
               {message.content}
@@ -245,6 +327,89 @@ function CitationLink({ href, children, citations, onCitationClick }: CitationLi
       <BookOpen className="h-3 w-3" />
       {children}
     </button>
+  );
+}
+
+interface InlineCitationBadgeProps {
+  title: string;
+  author?: string;
+  isWeb: boolean;
+  citation?: Citation;
+  onCitationClick?: (citation: Citation) => void;
+}
+
+function InlineCitationBadge({
+  title,
+  author,
+  isWeb,
+  citation,
+  onCitationClick,
+}: InlineCitationBadgeProps) {
+  const displayText = author ? `${title} - ${author}` : title;
+
+  if (citation) {
+    return (
+      <HoverCard openDelay={200} closeDelay={100}>
+        <HoverCardTrigger asChild>
+          <button
+            onClick={() => onCitationClick?.(citation)}
+            className={cn(
+              "inline-flex items-center gap-1 mx-0.5 px-2 py-0.5 rounded-full text-xs",
+              "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300",
+              "hover:bg-blue-200 dark:hover:bg-blue-800/40 transition-colors cursor-pointer"
+            )}
+          >
+            {isWeb ? (
+              <Globe className="h-3 w-3" />
+            ) : (
+              <BookOpen className="h-3 w-3" />
+            )}
+            <span className="max-w-[150px] truncate">{title}</span>
+          </button>
+        </HoverCardTrigger>
+        <HoverCardContent align="start" className="w-80">
+          <div className="space-y-2">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="font-medium text-sm">{citation.title}</p>
+                {citation.author && (
+                  <p className="text-xs text-muted-foreground">{citation.author}</p>
+                )}
+              </div>
+              <Badge
+                variant={citation.type === "aozora" ? "default" : "secondary"}
+                className="text-[10px]"
+              >
+                {citation.type === "aozora" ? "青空文庫" : "Web"}
+              </Badge>
+            </div>
+            <p className="text-xs text-muted-foreground line-clamp-4 leading-relaxed">
+              {citation.text}
+            </p>
+            <p className="text-[10px] text-primary">
+              クリックして詳細を表示 →
+            </p>
+          </div>
+        </HoverCardContent>
+      </HoverCard>
+    );
+  }
+
+  // No citation data - just show badge without hover
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 mx-0.5 px-2 py-0.5 rounded-full text-xs",
+        "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400"
+      )}
+    >
+      {isWeb ? (
+        <Globe className="h-3 w-3" />
+      ) : (
+        <BookOpen className="h-3 w-3" />
+      )}
+      <span className="max-w-[150px] truncate">{displayText}</span>
+    </span>
   );
 }
 
