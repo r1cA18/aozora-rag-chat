@@ -40,3 +40,4 @@ npm-debug.log*
 *.sqlite3
 data/*.sqlite
 data/exa_cache.sqlite
+.playwright-mcp/
