@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-
-const BACKEND_URL = process.env.BACKEND_WORKS_URL || "http://localhost:8000/api/works";
+import { BACKEND_URLS } from "@/lib/backend-config";
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
-  const url = new URL(BACKEND_URL);
+  const url = new URL(BACKEND_URLS.works);
 
   // Forward all query params
   searchParams.forEach((value, key) => {

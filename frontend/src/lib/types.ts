@@ -1,4 +1,45 @@
 /**
+ * Shared type definitions for the frontend.
+ */
+
+/**
+ * Work item from the backend API.
+ */
+export interface WorkItem {
+  work_id: string;
+  title: string;
+  author: string;
+  source_path?: string;
+}
+
+/**
+ * Simplified work representation used in UI.
+ */
+export interface Work {
+  id: string;
+  title: string;
+  author: string;
+}
+
+/**
+ * Response from the works list endpoint.
+ */
+export interface WorkListResponse {
+  works: WorkItem[];
+  total: number;
+}
+
+/**
+ * Response from the work text endpoint.
+ */
+export interface WorkTextResponse {
+  work_id: string;
+  title: string;
+  author: string;
+  text: string;
+}
+
+/**
  * Search result from the backend.
  */
 export interface SearchResultItem {
@@ -16,6 +57,9 @@ export interface SearchResultItem {
   snippet?: string;
 }
 
+/**
+ * Response from the search endpoint.
+ */
 export interface SearchResponse {
   query: string;
   aozora_results: SearchResultItem[];
@@ -30,22 +74,17 @@ export interface SearchResponse {
 export interface Citation {
   type: "aozora" | "web";
   text: string;
-  title?: string;
+  title: string;
   author?: string;
   workId?: string;
   url?: string;
 }
 
 /**
- * State for the side panel.
+ * Chat message from AI SDK.
  */
-export interface SidePanelState {
-  isOpen: boolean;
-  content?: {
-    title: string;
-    author: string;
-    text: string;
-    highlightStart?: number;
-    highlightEnd?: number;
-  };
+export interface Message {
+  id: string;
+  role: "user" | "assistant" | "system" | "data";
+  content: string;
 }

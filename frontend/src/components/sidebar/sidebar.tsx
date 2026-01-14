@@ -8,29 +8,8 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { fetchWorks, type WorkItem } from "@/lib/api";
-
-// Debounce hook
-function useDebounce<T>(value: T, delay: number): T {
-  const [debouncedValue, setDebouncedValue] = useState<T>(value);
-
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedValue(value);
-    }, delay);
-
-    return () => {
-      clearTimeout(handler);
-    };
-  }, [value, delay]);
-
-  return debouncedValue;
-}
-
-interface Work {
-  id: string;
-  title: string;
-  author: string;
-}
+import type { Work } from "@/lib/types";
+import { useDebounce } from "@/hooks/use-debounce";
 
 interface SidebarProps {
   recentWorks?: Work[];

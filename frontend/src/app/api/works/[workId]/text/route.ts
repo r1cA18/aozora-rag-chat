@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-
-const BACKEND_BASE_URL = process.env.BACKEND_WORKS_URL || "http://localhost:8000/api/works";
+import { BACKEND_URLS } from "@/lib/backend-config";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ workId: string }> }
 ) {
   const { workId } = await params;
-  const url = `${BACKEND_BASE_URL}/${workId}/text`;
+  const url = `${BACKEND_URLS.works}/${workId}/text`;
 
   try {
     const response = await fetch(url);
