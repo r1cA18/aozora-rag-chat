@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bunx shadcn@latest add:*)",
+      "Bash(bun run build:*)",
+      "Bash(bun add:*)",
+      "mcp__plugin_playwright_playwright__browser_navigate",
+      "mcp__plugin_playwright_playwright__browser_take_screenshot",
+      "mcp__plugin_playwright_playwright__browser_resize",
+      "mcp__plugin_playwright_playwright__browser_click",
+      "Bash(git checkout:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}

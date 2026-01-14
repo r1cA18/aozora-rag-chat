@@ -7,7 +7,7 @@ import type { SearchResponse } from "@/lib/types";
 export const maxDuration = 60;
 
 export async function POST(req: Request) {
-  const { messages } = await req.json();
+  const { messages, contextPrompt } = await req.json();
 
   // Get the latest user message
   const lastMessage = messages[messages.length - 1];
@@ -61,8 +61,14 @@ export async function POST(req: Request) {
     contextSection = `\n\n[検索エラー: ${searchError}]\n\n`;
   }
 
+  // Include user-provided context (selected text, open tabs)
+  let userContext = "";
+  if (contextPrompt) {
+    userContext = `\n\n【ユーザーが参照中の情報】\n${contextPrompt}\n`;
+  }
+
   // Build the full prompt
-  const systemWithContext = `${SYSTEM_PROMPT}\n\n${contextSection}`;
+  const systemWithContext = `${SYSTEM_PROMPT}${userContext}\n\n${contextSection}`;
 
   // Stream the response using Gemini
   const result = streamText({
