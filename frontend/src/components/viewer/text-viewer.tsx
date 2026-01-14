@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import { X, BookOpen, ExternalLink, ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { X, BookOpen, ExternalLink, ZoomIn, ZoomOut } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -27,6 +27,7 @@ interface TextViewerProps {
   onTabChange?: (tabId: string) => void;
   onTabClose?: (tabId: string) => void;
   onOpenAozora?: (workId: string) => void;
+  onSelectionChange?: (workId: string, title: string, selectedText: string | null) => void;
 }
 
 export function TextViewer({
@@ -35,11 +36,39 @@ export function TextViewer({
   onTabChange,
   onTabClose,
   onOpenAozora,
+  onSelectionChange,
 }: TextViewerProps) {
   const [fontSize, setFontSize] = useState(16);
   const contentRef = useRef<HTMLDivElement>(null);
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
+
+  // Handle text selection - auto add/remove from context
+  const handleMouseUp = useCallback(() => {
+    if (!activeTab) return;
+
+    const sel = window.getSelection();
+    if (sel && sel.toString().trim().length > 0) {
+      onSelectionChange?.(activeTab.workId, activeTab.title, sel.toString().trim());
+    } else {
+      onSelectionChange?.(activeTab.workId, activeTab.title, null);
+    }
+  }, [activeTab, onSelectionChange]);
+
+  // Clear selection context when clicking outside content area
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest(".prose") && activeTab) {
+        const sel = window.getSelection();
+        if (!sel || sel.toString().trim().length === 0) {
+          onSelectionChange?.(activeTab.workId, activeTab.title, null);
+        }
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [activeTab, onSelectionChange]);
 
   // Scroll to highlight when it changes
   useEffect(() => {
@@ -161,7 +190,7 @@ export function TextViewer({
       {/* Content */}
       {activeTab && (
         <ScrollArea className="flex-1">
-          <div className="p-8 max-w-3xl mx-auto">
+          <div className="p-8 max-w-3xl mx-auto" onMouseUp={handleMouseUp}>
             {/* Header */}
             <div className="mb-8 pb-6 border-b">
               <h1 className="text-2xl font-bold mb-2">{activeTab.title}</h1>
@@ -182,6 +211,7 @@ export function TextViewer({
           </div>
         </ScrollArea>
       )}
+
     </div>
   );
 }

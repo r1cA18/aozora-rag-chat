@@ -7,6 +7,7 @@ import { Sidebar } from "@/components/sidebar/sidebar";
 import { TextViewer } from "@/components/viewer/text-viewer";
 import { ChatPanel } from "@/components/chat/chat-panel";
 import { useViewer } from "@/hooks/use-viewer";
+import { useChatContext } from "@/hooks/use-chat-context";
 import { searchWorks, fetchWorkText, type SearchResultItem } from "@/lib/api";
 
 interface Work {
@@ -25,8 +26,23 @@ interface Citation {
 }
 
 export default function Home() {
-  const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat();
   const { tabs, activeTabId, setActiveTabId, openTab, closeTab } = useViewer();
+  const {
+    contextItems,
+    setTabContext,
+    clearTabContext,
+    setSelectionContext,
+    clearSelectionContext,
+    removeContext,
+    getContextPrompt,
+  } = useChatContext();
+
+  const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
+    body: {
+      contextPrompt: getContextPrompt(),
+    },
+  });
+
   const [recentWorks, setRecentWorks] = useState<Work[]>([]);
   const [selectedWorkId, setSelectedWorkId] = useState<string>();
   const [citations, setCitations] = useState<Map<string, Citation>>(new Map());
@@ -122,6 +138,29 @@ export default function Home() {
     window.open(`https://www.aozora.gr.jp/`, "_blank");
   }, []);
 
+  // Auto-add active tab to context when it changes
+  useEffect(() => {
+    const activeTab = tabs.find((t) => t.id === activeTabId);
+    if (activeTab && activeTab.content && activeTab.content !== "本文を読み込み中...") {
+      const excerpt = activeTab.content.slice(0, 500);
+      setTabContext(activeTab.workId, activeTab.title, activeTab.author, excerpt);
+    } else {
+      clearTabContext();
+    }
+  }, [activeTabId, tabs, setTabContext, clearTabContext]);
+
+  // Handle text selection change - auto add/remove selection context
+  const handleSelectionChange = useCallback(
+    (workId: string, title: string, selectedText: string | null) => {
+      if (selectedText) {
+        setSelectionContext(workId, title, selectedText);
+      } else {
+        clearSelectionContext();
+      }
+    },
+    [setSelectionContext, clearSelectionContext]
+  );
+
   // Custom submit handler to capture search results
   const handleChatSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -160,6 +199,7 @@ export default function Home() {
           onTabChange={setActiveTabId}
           onTabClose={closeTab}
           onOpenAozora={handleOpenAozora}
+          onSelectionChange={handleSelectionChange}
         />
       }
       chat={
@@ -168,9 +208,11 @@ export default function Home() {
           input={input}
           isLoading={isLoading}
           citations={citations}
+          contextItems={contextItems}
           onInputChange={handleInputChange}
           onSubmit={handleChatSubmit}
           onCitationClick={handleCitationClick}
+          onRemoveContext={removeContext}
         />
       }
     />

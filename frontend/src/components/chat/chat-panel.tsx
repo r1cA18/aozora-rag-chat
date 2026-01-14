@@ -13,6 +13,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import ReactMarkdown from "react-markdown";
 import { cn } from "@/lib/utils";
+import { ContextBadges } from "./context-badges";
+import type { ContextItem } from "@/hooks/use-chat-context";
 
 interface Message {
   id: string;
@@ -34,9 +36,11 @@ interface ChatPanelProps {
   input: string;
   isLoading: boolean;
   citations?: Map<string, Citation>;
+  contextItems?: ContextItem[];
   onInputChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onSubmit: (e: React.FormEvent) => void;
   onCitationClick?: (citation: Citation) => void;
+  onRemoveContext?: (id: string) => void;
 }
 
 export function ChatPanel({
@@ -44,9 +48,11 @@ export function ChatPanel({
   input,
   isLoading,
   citations = new Map(),
+  contextItems = [],
   onInputChange,
   onSubmit,
   onCitationClick,
+  onRemoveContext,
 }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -97,24 +103,27 @@ export function ChatPanel({
         </div>
       </ScrollArea>
 
-      {/* Input */}
-      <div className="p-4 border-t bg-background">
-        <form onSubmit={onSubmit} className="flex gap-2">
-          <Input
-            value={input}
-            onChange={onInputChange}
-            placeholder="質問を入力..."
-            disabled={isLoading}
-            className="flex-1 text-sm"
-          />
-          <Button
-            type="submit"
-            size="icon"
-            disabled={isLoading || !input.trim()}
-          >
-            <Send className="h-4 w-4" />
-          </Button>
-        </form>
+      {/* Input with Context */}
+      <div className="border-t bg-background">
+        <ContextBadges items={contextItems} onRemove={onRemoveContext || (() => {})} />
+        <div className="p-4">
+          <form onSubmit={onSubmit} className="flex gap-2">
+            <Input
+              value={input}
+              onChange={onInputChange}
+              placeholder={contextItems.length > 0 ? "コンテキストを参照して質問..." : "質問を入力..."}
+              disabled={isLoading}
+              className="flex-1 text-sm"
+            />
+            <Button
+              type="submit"
+              size="icon"
+              disabled={isLoading || !input.trim()}
+            >
+              <Send className="h-4 w-4" />
+            </Button>
+          </form>
+        </div>
       </div>
     </div>
   );
