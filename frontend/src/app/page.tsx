@@ -9,21 +9,7 @@ import { ChatPanel } from "@/components/chat/chat-panel";
 import { useViewer } from "@/hooks/use-viewer";
 import { useChatContext } from "@/hooks/use-chat-context";
 import { searchWorks, fetchWorkText, type SearchResultItem } from "@/lib/api";
-
-interface Work {
-  id: string;
-  title: string;
-  author: string;
-}
-
-interface Citation {
-  type: "aozora" | "web";
-  title: string;
-  author?: string;
-  text: string;
-  workId?: string;
-  url?: string;
-}
+import type { Work, Citation } from "@/lib/types";
 
 export default function Home() {
   const { tabs, activeTabId, setActiveTabId, openTab, closeTab } = useViewer();

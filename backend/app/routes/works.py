@@ -1,22 +1,19 @@
 """Works API route for retrieving work list and text content."""
 
-import re
-import sys
 import logging
+import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from app.settings import get_settings
-
-# Add scripts to path for importing cleaning utilities
-SCRIPTS_PATH = Path(__file__).parent.parent.parent.parent / "scripts"
-sys.path.insert(0, str(SCRIPTS_PATH))
-
-from aozora.cleaning import read_aozora_file, clean_aozora_text
+from app.utils.aozora import (
+    clean_aozora_text,
+    extract_title_author,
+    read_aozora_file,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/works", tags=["works"])
@@ -53,13 +50,12 @@ def get_aozora_repo_path() -> Path:
     return Path(settings.aozora_repo_path).resolve()
 
 
-def extract_work_info(filepath: Path) -> Optional[dict]:
+def extract_work_info(filepath: Path) -> dict | None:
     """Extract work metadata from filepath and content."""
     parts = filepath.parts
     try:
         # Find cards index
-        cards_idx = parts.index("cards")
-        author_id = parts[cards_idx + 1]
+        parts.index("cards")
 
         # Extract work_id from filename (e.g., "1234_ruby_12345.txt")
         filename = filepath.stem
@@ -68,26 +64,13 @@ def extract_work_info(filepath: Path) -> Optional[dict]:
             return None
         work_id = match.group(1)
 
-        # Read first few lines to get title/author
+        # Read file to get title/author
         try:
             content = read_aozora_file(filepath)
-            lines = content.split("\n")[:20]
+            title, author = extract_title_author(content)
 
-            # First non-empty line is usually the title
-            title = ""
-            author = ""
-            for i, line in enumerate(lines):
-                line = line.strip()
-                if line and not title:
-                    title = line
-                elif line and title and not author:
-                    author = line
-                    break
-
-            if not title:
+            if title == "不明":
                 return None  # Skip files without proper title
-            if not author:
-                author = "不明"
 
         except Exception:
             # Skip files that can't be read (corrupted ZIP, XML, etc.)
@@ -95,8 +78,8 @@ def extract_work_info(filepath: Path) -> Optional[dict]:
 
         return {
             "work_id": work_id,
-            "title": title[:100],
-            "author": author[:50],
+            "title": title,
+            "author": author,
             "source_path": str(filepath),
         }
 
@@ -157,7 +140,7 @@ def get_all_works() -> list[WorkItem]:
 async def list_works(
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
-    q: Optional[str] = Query(None, description="Search query for title or author"),
+    q: str | None = Query(None, description="Search query for title or author"),
 ) -> WorkListResponse:
     """
     Get list of all works from the filesystem.
@@ -171,7 +154,8 @@ async def list_works(
     if q:
         q_lower = q.lower()
         works = [
-            w for w in works
+            w
+            for w in works
             if q_lower in w.title.lower() or q_lower in w.author.lower()
         ]
 
@@ -183,9 +167,7 @@ async def list_works(
 
 @router.get("/{work_id}/text", response_model=WorkTextResponse)
 async def get_work_text(work_id: str) -> WorkTextResponse:
-    """
-    Get the full text of a work by work_id.
-    """
+    """Get the full text of a work by work_id."""
     repo_path = get_aozora_repo_path()
     if not repo_path.exists():
         raise HTTPException(status_code=503, detail="Aozora repository not found")
@@ -207,23 +189,12 @@ async def get_work_text(work_id: str) -> WorkTextResponse:
     try:
         raw_text = read_aozora_file(target_file)
         clean_text = clean_aozora_text(raw_text)
-
-        # Extract title and author from first lines
-        lines = raw_text.split("\n")[:20]
-        title = ""
-        author = ""
-        for line in lines:
-            line = line.strip()
-            if line and not title:
-                title = line
-            elif line and title and not author:
-                author = line
-                break
+        title, author = extract_title_author(raw_text)
 
         return WorkTextResponse(
             work_id=work_id,
-            title=title[:100] or f"Work {work_id}",
-            author=author[:50] or "Unknown",
+            title=title or f"Work {work_id}",
+            author=author or "Unknown",
             text=clean_text,
         )
 

@@ -3,60 +3,19 @@
  * Uses local API proxy routes to communicate with backend.
  */
 
+import type {
+  WorkItem,
+  WorkListResponse,
+  WorkTextResponse,
+  SearchResultItem,
+  SearchResponse,
+} from "./types";
+
+// Re-export types for convenience
+export type { WorkItem, WorkListResponse, WorkTextResponse, SearchResultItem, SearchResponse };
+
 // Use relative URLs to go through the Next.js API proxy
 const API_BASE = "";
-
-export interface WorkItem {
-  work_id: string;
-  title: string;
-  author: string;
-  source_path?: string;
-}
-
-export interface WorkListResponse {
-  works: WorkItem[];
-  total: number;
-}
-
-export interface ChunkResponse {
-  work_id: string;
-  chunk_id: string;
-  title: string | null;
-  author: string | null;
-  text: string;
-  context_text: string | null;
-  offset_start: number | null;
-  offset_end: number | null;
-}
-
-export interface WorkTextResponse {
-  work_id: string;
-  title: string;
-  author: string;
-  text: string;
-}
-
-export interface SearchResultItem {
-  id: string;
-  source: "aozora" | "web";
-  text: string;
-  score: number;
-  title?: string;
-  author?: string;
-  work_id?: string;
-  offset_start?: number;
-  offset_end?: number;
-  context_text?: string;
-  url?: string;
-}
-
-export interface SearchResponse {
-  query: string;
-  aozora_results: SearchResultItem[];
-  web_results: SearchResultItem[];
-  timing_ms: number;
-  errors: string[];
-}
 
 /**
  * Fetch list of works from the backend.
@@ -73,17 +32,6 @@ export async function fetchWorks(limit = 100, offset = 0, query?: string): Promi
   const res = await fetch(`${API_BASE}/api/works?${params}`);
   if (!res.ok) {
     throw new Error(`Failed to fetch works: ${res.status}`);
-  }
-  return res.json();
-}
-
-/**
- * Fetch a specific chunk by work_id and chunk_id.
- */
-export async function fetchChunk(workId: string, chunkId: string): Promise<ChunkResponse> {
-  const res = await fetch(`${API_BASE}/api/works/${workId}/chunk/${chunkId}`);
-  if (!res.ok) {
-    throw new Error(`Failed to fetch chunk: ${res.status}`);
   }
   return res.json();
 }

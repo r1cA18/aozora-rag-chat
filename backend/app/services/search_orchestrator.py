@@ -4,7 +4,6 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass
-from typing import List, Optional
 
 from app.schemas import SearchResultItem
 from app.services.chroma_client import query_similar
@@ -29,7 +28,7 @@ async def run_parallel_search(
     k_internal: int = 5,
     k_web: int = 3,
     include_web: bool = True,
-    timeout_ms: Optional[int] = None,
+    timeout_ms: int | None = None,
 ) -> SearchResults:
     """
     Run parallel search across internal (ChromaDB) and external (Exa) sources.
