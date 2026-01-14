@@ -50,8 +50,7 @@ class WorkTextResponse(BaseModel):
 def get_aozora_repo_path() -> Path:
     """Get path to aozora repository."""
     settings = get_settings()
-    # Relative to backend directory
-    return Path(__file__).parent.parent.parent.parent / "data" / "aozora_repo"
+    return Path(settings.aozora_repo_path).resolve()
 
 
 def extract_work_info(filepath: Path) -> Optional[dict]:

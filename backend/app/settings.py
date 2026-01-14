@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     chroma_persist_dir: str = "../chroma"
     chroma_collection: str = "aozora_chunks_v1"
 
+    # Aozora Repository
+    aozora_repo_path: str = "../data/aozora_repo"
+
     # Search Settings
     search_timeout_ms: int = 8000
     exa_cache_ttl_days: int = 7
