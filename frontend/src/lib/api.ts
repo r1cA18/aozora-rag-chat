@@ -1,8 +1,10 @@
 /**
  * API client for backend communication.
+ * Uses local API proxy routes to communicate with backend.
  */
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+// Use relative URLs to go through the Next.js API proxy
+const API_BASE = "";
 
 export interface WorkItem {
   work_id: string;
@@ -68,7 +70,7 @@ export async function fetchWorks(limit = 100, offset = 0, query?: string): Promi
   if (query) {
     params.set("q", query);
   }
-  const res = await fetch(`${BACKEND_URL}/api/works?${params}`);
+  const res = await fetch(`${API_BASE}/api/works?${params}`);
   if (!res.ok) {
     throw new Error(`Failed to fetch works: ${res.status}`);
   }
@@ -79,7 +81,7 @@ export async function fetchWorks(limit = 100, offset = 0, query?: string): Promi
  * Fetch a specific chunk by work_id and chunk_id.
  */
 export async function fetchChunk(workId: string, chunkId: string): Promise<ChunkResponse> {
-  const res = await fetch(`${BACKEND_URL}/api/works/${workId}/chunk/${chunkId}`);
+  const res = await fetch(`${API_BASE}/api/works/${workId}/chunk/${chunkId}`);
   if (!res.ok) {
     throw new Error(`Failed to fetch chunk: ${res.status}`);
   }
@@ -90,7 +92,7 @@ export async function fetchChunk(workId: string, chunkId: string): Promise<Chunk
  * Fetch the full text of a work by work_id.
  */
 export async function fetchWorkText(workId: string): Promise<WorkTextResponse> {
-  const res = await fetch(`${BACKEND_URL}/api/works/${workId}/text`);
+  const res = await fetch(`${API_BASE}/api/works/${workId}/text`);
   if (!res.ok) {
     throw new Error(`Failed to fetch work text: ${res.status}`);
   }
@@ -108,7 +110,7 @@ export async function searchWorks(
     include_web?: boolean;
   } = {}
 ): Promise<SearchResponse> {
-  const res = await fetch(`${BACKEND_URL}/api/search`, {
+  const res = await fetch(`${API_BASE}/api/search`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
