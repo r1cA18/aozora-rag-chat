@@ -42,3 +42,4 @@ data/*.sqlite
 data/exa_cache.sqlite
 .playwright-mcp/
 data/manifests/aozora_index.jsonl
+.claude/settings.local.json
