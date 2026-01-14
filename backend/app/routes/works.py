@@ -1,12 +1,24 @@
-"""Works API route for retrieving work list and chunk details."""
+"""Works API route for retrieving work list and text content."""
 
+import re
+import sys
+import logging
+from functools import lru_cache
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from app.services.chroma_client import get_collection
+from app.settings import get_settings
 
+# Add scripts to path for importing cleaning utilities
+SCRIPTS_PATH = Path(__file__).parent.parent.parent.parent / "scripts"
+sys.path.insert(0, str(SCRIPTS_PATH))
+
+from aozora.cleaning import read_aozora_file, clean_aozora_text
+
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/works", tags=["works"])
 
 
@@ -16,7 +28,7 @@ class WorkItem(BaseModel):
     work_id: str
     title: str
     author: str
-    chunk_count: int = 0
+    source_path: str
 
 
 class WorkListResponse(BaseModel):
@@ -26,107 +38,197 @@ class WorkListResponse(BaseModel):
     total: int
 
 
+class WorkTextResponse(BaseModel):
+    """Response for work full text."""
+
+    work_id: str
+    title: str
+    author: str
+    text: str
+
+
+def get_aozora_repo_path() -> Path:
+    """Get path to aozora repository."""
+    settings = get_settings()
+    # Relative to backend directory
+    return Path(__file__).parent.parent.parent.parent / "data" / "aozora_repo"
+
+
+def extract_work_info(filepath: Path) -> Optional[dict]:
+    """Extract work metadata from filepath and content."""
+    parts = filepath.parts
+    try:
+        # Find cards index
+        cards_idx = parts.index("cards")
+        author_id = parts[cards_idx + 1]
+
+        # Extract work_id from filename (e.g., "1234_ruby_12345.txt")
+        filename = filepath.stem
+        match = re.match(r"(\d+)", filename)
+        if not match:
+            return None
+        work_id = match.group(1)
+
+        # Read first few lines to get title/author
+        try:
+            content = read_aozora_file(filepath)
+            lines = content.split("\n")[:20]
+
+            # First non-empty line is usually the title
+            title = ""
+            author = ""
+            for i, line in enumerate(lines):
+                line = line.strip()
+                if line and not title:
+                    title = line
+                elif line and title and not author:
+                    author = line
+                    break
+
+            if not title:
+                return None  # Skip files without proper title
+            if not author:
+                author = "不明"
+
+        except Exception:
+            # Skip files that can't be read (corrupted ZIP, XML, etc.)
+            return None
+
+        return {
+            "work_id": work_id,
+            "title": title[:100],
+            "author": author[:50],
+            "source_path": str(filepath),
+        }
+
+    except (ValueError, IndexError):
+        return None
+
+
+def find_text_files(repo_path: Path) -> list[Path]:
+    """Find all text/zip files in the Aozora repository."""
+    cards_dir = repo_path / "cards"
+    if not cards_dir.exists():
+        return []
+
+    text_files = []
+
+    # Find both .txt and .zip files
+    for pattern in ["**/files/*.txt", "**/files/*_ruby*.zip", "**/files/*_txt*.zip"]:
+        for file in cards_dir.glob(pattern):
+            # Skip certain patterns
+            filename = file.name.lower()
+            if any(skip in filename for skip in ["readme", "index", "copyright"]):
+                continue
+            text_files.append(file)
+
+    return text_files
+
+
+@lru_cache(maxsize=1)
+def get_all_works() -> list[WorkItem]:
+    """Get all works with caching and deduplication."""
+    repo_path = get_aozora_repo_path()
+    if not repo_path.exists():
+        return []
+
+    text_files = find_text_files(repo_path)
+    logger.info(f"Found {len(text_files)} text files, extracting metadata...")
+
+    # Use dict to deduplicate by work_id
+    works_map: dict[str, WorkItem] = {}
+    for i, filepath in enumerate(text_files):
+        if i % 1000 == 0 and i > 0:
+            logger.info(f"Processed {i}/{len(text_files)} files...")
+        info = extract_work_info(filepath)
+        if info:
+            work_id = info["work_id"]
+            # Keep first occurrence (prefer _ruby over _txt)
+            if work_id not in works_map:
+                works_map[work_id] = WorkItem(**info)
+
+    works = list(works_map.values())
+    # Sort by title
+    works.sort(key=lambda w: w.title)
+    logger.info(f"Loaded {len(works)} unique works")
+    return works
+
+
 @router.get("", response_model=WorkListResponse)
 async def list_works(
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
+    q: Optional[str] = Query(None, description="Search query for title or author"),
 ) -> WorkListResponse:
     """
-    Get list of all works in the database.
-
-    Returns unique works with their metadata.
+    Get list of all works from the filesystem.
+    Supports optional search query to filter by title or author.
     """
-    collection = get_collection()
-    if collection is None:
-        raise HTTPException(status_code=503, detail="Database not available")
+    works = get_all_works()
+    if not works:
+        raise HTTPException(status_code=503, detail="No works available")
+
+    # Filter by search query if provided
+    if q:
+        q_lower = q.lower()
+        works = [
+            w for w in works
+            if q_lower in w.title.lower() or q_lower in w.author.lower()
+        ]
+
+    total = len(works)
+    paginated = works[offset : offset + limit]
+
+    return WorkListResponse(works=paginated, total=total)
+
+
+@router.get("/{work_id}/text", response_model=WorkTextResponse)
+async def get_work_text(work_id: str) -> WorkTextResponse:
+    """
+    Get the full text of a work by work_id.
+    """
+    repo_path = get_aozora_repo_path()
+    if not repo_path.exists():
+        raise HTTPException(status_code=503, detail="Aozora repository not found")
+
+    # Find the file matching this work_id
+    text_files = find_text_files(repo_path)
+    target_file = None
+
+    for filepath in text_files:
+        filename = filepath.stem
+        match = re.match(r"(\d+)", filename)
+        if match and match.group(1) == work_id:
+            target_file = filepath
+            break
+
+    if not target_file:
+        raise HTTPException(status_code=404, detail=f"Work {work_id} not found")
 
     try:
-        # Get all documents with metadata
-        result = collection.get(
-            include=["metadatas"],
-            limit=10000,  # Get all chunks
-        )
+        raw_text = read_aozora_file(target_file)
+        clean_text = clean_aozora_text(raw_text)
 
-        if not result or not result["metadatas"]:
-            return WorkListResponse(works=[], total=0)
+        # Extract title and author from first lines
+        lines = raw_text.split("\n")[:20]
+        title = ""
+        author = ""
+        for line in lines:
+            line = line.strip()
+            if line and not title:
+                title = line
+            elif line and title and not author:
+                author = line
+                break
 
-        # Extract unique works
-        works_map: dict[str, WorkItem] = {}
-        for meta in result["metadatas"]:
-            work_id = meta.get("work_id", "")
-            if work_id and work_id not in works_map:
-                works_map[work_id] = WorkItem(
-                    work_id=work_id,
-                    title=meta.get("title", ""),
-                    author=meta.get("author", ""),
-                    chunk_count=1,
-                )
-            elif work_id:
-                works_map[work_id].chunk_count += 1
-
-        # Sort by title and apply pagination
-        works = sorted(works_map.values(), key=lambda w: w.title)
-        total = len(works)
-        works = works[offset : offset + limit]
-
-        return WorkListResponse(works=works, total=total)
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-class ChunkResponse(BaseModel):
-    """Response for a single chunk."""
-
-    work_id: str
-    chunk_id: str
-    title: Optional[str] = None
-    author: Optional[str] = None
-    text: str
-    context_text: Optional[str] = None
-    offset_start: Optional[int] = None
-    offset_end: Optional[int] = None
-
-
-@router.get("/{work_id}/chunk/{chunk_id}", response_model=ChunkResponse)
-async def get_chunk(work_id: str, chunk_id: str) -> ChunkResponse:
-    """
-    Get a specific chunk by work_id and chunk_id.
-
-    Used by the frontend to load text for the side panel.
-    """
-    collection = get_collection()
-    if collection is None:
-        raise HTTPException(status_code=503, detail="Database not available")
-
-    try:
-        result = collection.get(
-            ids=[chunk_id],
-            include=["documents", "metadatas"],
-        )
-
-        if not result or not result["ids"]:
-            raise HTTPException(status_code=404, detail="Chunk not found")
-
-        doc = result["documents"][0] if result["documents"] else ""
-        meta = result["metadatas"][0] if result["metadatas"] else {}
-
-        # Verify work_id matches
-        if meta.get("work_id") != work_id:
-            raise HTTPException(status_code=404, detail="Chunk not found for this work")
-
-        return ChunkResponse(
+        return WorkTextResponse(
             work_id=work_id,
-            chunk_id=chunk_id,
-            title=meta.get("title"),
-            author=meta.get("author"),
-            text=doc,
-            context_text=meta.get("context_text"),
-            offset_start=meta.get("offset_start"),
-            offset_end=meta.get("offset_end"),
+            title=title[:100] or f"Work {work_id}",
+            author=author[:50] or "Unknown",
+            text=clean_text,
         )
 
-    except HTTPException:
-        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Error reading work: {e}")

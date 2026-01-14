@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { BookOpen, Search, Clock, Library, ChevronRight, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -8,6 +8,23 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { fetchWorks, type WorkItem } from "@/lib/api";
+
+// Debounce hook
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+}
 
 interface Work {
   id: string;
@@ -24,16 +41,20 @@ interface SidebarProps {
 export function Sidebar({ recentWorks = [], onWorkSelect, selectedWorkId }: SidebarProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [works, setWorks] = useState<Work[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch works from backend
+  // Debounce search query
+  const debouncedQuery = useDebounce(searchQuery, 300);
+
+  // Fetch works from backend (with search)
   useEffect(() => {
     async function loadWorks() {
       setIsLoading(true);
       setError(null);
       try {
-        const response = await fetchWorks(200);
+        const response = await fetchWorks(200, 0, debouncedQuery || undefined);
         setWorks(
           response.works.map((w: WorkItem) => ({
             id: w.work_id,
@@ -41,31 +62,20 @@ export function Sidebar({ recentWorks = [], onWorkSelect, selectedWorkId }: Side
             author: w.author,
           }))
         );
+        setTotalCount(response.total);
       } catch (err) {
         console.error("Failed to load works:", err);
         setError("作品の読み込みに失敗しました");
-        // Fallback to demo data
-        setWorks([
-          { id: "1", title: "吾輩は猫である", author: "夏目漱石" },
-          { id: "2", title: "羅生門", author: "芥川龍之介" },
-          { id: "3", title: "走れメロス", author: "太宰治" },
-          { id: "4", title: "銀河鉄道の夜", author: "宮沢賢治" },
-          { id: "5", title: "檸檬", author: "梶井基次郎" },
-        ]);
+        setWorks([]);
+        setTotalCount(0);
       } finally {
         setIsLoading(false);
       }
     }
     loadWorks();
-  }, []);
+  }, [debouncedQuery]);
 
-  const filteredWorks = searchQuery
-    ? works.filter(
-        (w) =>
-          w.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          w.author.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : works;
+  const filteredWorks = works;
 
   return (
     <div className="flex h-full flex-col">
@@ -122,7 +132,7 @@ export function Sidebar({ recentWorks = [], onWorkSelect, selectedWorkId }: Side
           <BookOpen className="h-3 w-3" />
           <span>作品一覧</span>
           <Badge variant="secondary" className="ml-auto text-[10px] px-1.5 py-0">
-            {isLoading ? "..." : filteredWorks.length}
+            {isLoading ? "..." : `${filteredWorks.length}/${totalCount}`}
           </Badge>
         </div>
       </div>

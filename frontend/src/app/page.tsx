@@ -7,7 +7,7 @@ import { Sidebar } from "@/components/sidebar/sidebar";
 import { TextViewer } from "@/components/viewer/text-viewer";
 import { ChatPanel } from "@/components/chat/chat-panel";
 import { useViewer } from "@/hooks/use-viewer";
-import { searchWorks, type SearchResultItem } from "@/lib/api";
+import { searchWorks, fetchWorkText, type SearchResultItem } from "@/lib/api";
 
 interface Work {
   id: string;
@@ -53,7 +53,7 @@ export default function Home() {
   }, [lastSearchResults]);
 
   const handleWorkSelect = useCallback(
-    (work: Work) => {
+    async (work: Work) => {
       setSelectedWorkId(work.id);
 
       // Add to recent
@@ -62,18 +62,34 @@ export default function Home() {
         return [work, ...filtered].slice(0, 5);
       });
 
-      // Find corresponding search result for content
-      const searchResult = lastSearchResults.find((r) => r.work_id === work.id);
-      const content = searchResult?.context_text || searchResult?.text || "本文を読み込み中...";
-
+      // Open tab with loading state first
       openTab({
         workId: work.id,
         title: work.title,
         author: work.author,
-        content,
+        content: "本文を読み込み中...",
       });
+
+      // Fetch the full text
+      try {
+        const response = await fetchWorkText(work.id);
+        openTab({
+          workId: work.id,
+          title: response.title,
+          author: response.author,
+          content: response.text,
+        });
+      } catch (err) {
+        console.error("Failed to fetch work text:", err);
+        openTab({
+          workId: work.id,
+          title: work.title,
+          author: work.author,
+          content: "テキストの読み込みに失敗しました",
+        });
+      }
     },
-    [openTab, lastSearchResults]
+    [openTab]
   );
 
   const handleCitationClick = useCallback(

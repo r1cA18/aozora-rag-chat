@@ -9,34 +9,44 @@ export function useViewer() {
 
   const openTab = useCallback(
     (tab: Omit<ViewerTab, "id">) => {
-      const existingTab = tabs.find((t) => t.workId === tab.workId);
+      let resultTabId: string | undefined;
 
-      if (existingTab) {
-        // Update existing tab with new highlight if provided
-        if (tab.highlightRange) {
-          setTabs((prev) =>
-            prev.map((t) =>
-              t.id === existingTab.id
-                ? { ...t, highlightRange: tab.highlightRange }
-                : t
-            )
+      setTabs((prev) => {
+        const existingTab = prev.find((t) => t.workId === tab.workId);
+
+        if (existingTab) {
+          // Update existing tab with new content
+          resultTabId = existingTab.id;
+          return prev.map((t) =>
+            t.id === existingTab.id
+              ? {
+                  ...t,
+                  title: tab.title,
+                  author: tab.author,
+                  content: tab.content,
+                  highlightRange: tab.highlightRange,
+                }
+              : t
           );
         }
-        setActiveTabId(existingTab.id);
-        return existingTab.id;
+
+        // Create new tab
+        const newTab: ViewerTab = {
+          ...tab,
+          id: `${tab.workId}-${Date.now()}`,
+        };
+        resultTabId = newTab.id;
+        return [...prev, newTab];
+      });
+
+      // Set active tab after state update
+      if (resultTabId) {
+        setActiveTabId(resultTabId);
       }
 
-      // Create new tab
-      const newTab: ViewerTab = {
-        ...tab,
-        id: `${tab.workId}-${Date.now()}`,
-      };
-
-      setTabs((prev) => [...prev, newTab]);
-      setActiveTabId(newTab.id);
-      return newTab.id;
+      return resultTabId;
     },
-    [tabs]
+    []
   );
 
   const closeTab = useCallback(

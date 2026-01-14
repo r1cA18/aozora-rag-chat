@@ -1,6 +1,8 @@
 """Text cleaning utilities for Aozora Bunko texts."""
 
 import re
+import zipfile
+import io
 from pathlib import Path
 
 
@@ -48,26 +50,33 @@ def extract_body(text: str) -> str:
 
     Removes:
     - Header info before the main text
+    - Ruby/annotation explanation section
     - Footer with 底本, 校正, etc.
     """
     lines = text.split("\n")
 
-    # Find start of main text (after dashed line separator or title)
+    # Find start of main text
+    # Look for the LAST dashed line separator in the first 50 lines
+    # (to skip the header explanation section that may have its own separators)
     start_idx = 0
-    for i, line in enumerate(lines):
-        # Common separator patterns
-        if re.match(r"^[-－ー]{10,}$", line.strip()):
-            start_idx = i + 1
-            break
-        # Or after empty line following title block
-        if i > 0 and i < 20 and line.strip() == "" and lines[i - 1].strip():
-            # Check if previous lines look like header
-            if any(
-                kw in "".join(lines[:i])
-                for kw in ["作者", "著者", "訳者"]
-            ):
-                start_idx = i + 1
-                break
+    last_separator_idx = -1
+
+    for i, line in enumerate(lines[:50]):
+        if re.match(r"^[-－ー]+$", line.strip()) and len(line.strip()) >= 10:
+            last_separator_idx = i
+
+    if last_separator_idx > 0:
+        start_idx = last_separator_idx + 1
+    else:
+        # Fallback: look for empty line after title/author block
+        for i, line in enumerate(lines):
+            if i > 0 and i < 20 and line.strip() == "" and lines[i - 1].strip():
+                if any(
+                    kw in "".join(lines[:i])
+                    for kw in ["作者", "著者", "訳者"]
+                ):
+                    start_idx = i + 1
+                    break
 
     # Find end of main text (before footer)
     end_idx = len(lines)
@@ -124,22 +133,61 @@ def read_aozora_file(filepath: Path) -> str:
     """
     Read an Aozora Bunko text file with proper encoding handling.
 
+    Handles:
+    - ZIP compressed files (extract .txt from inside)
+    - Shift-JIS encoded files
+    - UTF-8 encoded files
+    - Skips XML/HTML files
+
     Most files are Shift-JIS, some are UTF-8.
     """
+    # Read raw bytes first to detect file type
+    with open(filepath, "rb") as f:
+        raw_data = f.read()
+
+    # Check for ZIP magic bytes (PK\x03\x04)
+    if raw_data[:4] == b"PK\x03\x04":
+        return _extract_text_from_zip(raw_data)
+
+    # Check for XML/HTML (skip these)
+    if raw_data[:5] == b"<?xml" or raw_data[:6] == b"<!DOCT":
+        raise ValueError("XML/HTML file, not plain text")
+
+    # Decode as text
+    return _decode_text(raw_data)
+
+
+def _extract_text_from_zip(zip_data: bytes) -> str:
+    """Extract text content from a ZIP archive."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(zip_data)) as zf:
+            # Find the main text file inside the ZIP
+            txt_files = [n for n in zf.namelist() if n.endswith(".txt")]
+            if not txt_files:
+                raise ValueError("No .txt file found in ZIP")
+
+            # Read the first .txt file
+            txt_name = txt_files[0]
+            txt_data = zf.read(txt_name)
+
+            return _decode_text(txt_data)
+    except zipfile.BadZipFile:
+        raise ValueError("Invalid ZIP file")
+
+
+def _decode_text(data: bytes) -> str:
+    """Decode bytes to string, trying multiple encodings."""
     # Try UTF-8 first
     try:
-        with open(filepath, "r", encoding="utf-8") as f:
-            return f.read()
+        return data.decode("utf-8")
     except UnicodeDecodeError:
         pass
 
     # Fall back to Shift-JIS (CP932 for Windows compatibility)
     try:
-        with open(filepath, "r", encoding="cp932") as f:
-            return f.read()
+        return data.decode("cp932")
     except UnicodeDecodeError:
         pass
 
     # Last resort: UTF-8 with error handling
-    with open(filepath, "r", encoding="utf-8", errors="replace") as f:
-        return f.read()
+    return data.decode("utf-8", errors="replace")
